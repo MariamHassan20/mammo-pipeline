@@ -1,89 +1,233 @@
-# Mammography cascade: normal/abnormal → lesion segmentation → benign/malignant
+<div align="center">
 
-> **Research use only.** Not a medical device. Not validated for clinical use. Do not use it for diagnosis or
-> any clinical decision.
+# 🩺 Mammo Pipeline
 
-One mammogram view in, one decision out:
+**From one mammogram to a decision: normal / abnormal → lesion segmentation → benign / malignant**
 
+![Python](https://img.shields.io/badge/python-3.10-3776AB?logo=python&logoColor=white)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.3-EE4C2C?logo=pytorch&logoColor=white)
+![MedSAM](https://img.shields.io/badge/segmentation-MedSAM-8A2BE2)
+![Mammo-FM](https://img.shields.io/badge/backbone-Mammo--FM-0A7E8C)
+![GPU](https://img.shields.io/badge/GPU-optional-76B900?logo=nvidia&logoColor=white)
+![Research use](https://img.shields.io/badge/use-research%20only-orange)
+
+[Pipeline](#-the-pipeline) •
+[Install](#-installation) •
+[Weights](#-weights) •
+[Run](#-run-it) •
+[Outputs](#-outputs) •
+[Models](#-the-models) •
+[Python API](#-python-api) •
+[Notes](#-usage-notes)
+
+</div>
+
+> [!WARNING]
+> **Research use only.** Not a medical device and not validated for clinical use. Do not use it for diagnosis
+> or any clinical decision.
+
+---
+
+## 🔎 The pipeline
+
+```mermaid
+flowchart LR
+    IN[/"🖼️ Mammogram<br/>one view, PNG/JPG"/] --> A
+
+    subgraph S1["① Screening"]
+        A["<b>Stage A</b><br/>Mammo-FM (frozen)<br/>+ linear head"]
+    end
+
+    A -->|"P(abnormal) below 0.762"| N(["✅ <b>Normal</b>"])
+    A -->|"P(abnormal) ≥ 0.762"| D
+
+    subgraph S2["② Localise"]
+        D["<b>Lesion detector</b><br/>Faster R-CNN"]
+        G["<b>GradCAM</b><br/>fallback"]
+        D -. "no box found" .-> G
+    end
+
+    D -->|box| M
+    G -->|box| M
+
+    subgraph S3["③ Segment"]
+        M["<b>MedSAM</b><br/>box-prompted"]
+        C["Crop lesion patch<br/>mask bbox + 10%"]
+        M --> C
+    end
+
+    C --> B
+
+    subgraph S4["④ Characterise"]
+        B["<b>Stage B</b><br/>fine-tuned Mammo-FM"]
+    end
+
+    B -->|"P(malignant) below 0.058"| BEN(["🟢 <b>Benign</b>"])
+    B -->|"P(malignant) ≥ 0.058"| MAL(["🔴 <b>Malignant</b>"])
+
+    classDef stop fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20
+    classDef bad fill:#ffebee,stroke:#c62828,color:#b71c1c
+    classDef ben fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    class N stop
+    class MAL bad
+    class BEN ben
 ```
-mammogram (PNG/JPG, one view)
-  │
-  ├─ 1. Stage A  Mammo-FM (frozen) + linear head ─► P(normal), P(benign), P(malignant)
-  │              P(abnormal) = P(benign) + P(malignant)
-  │              P(abnormal) < 0.762  ──────────────────────────────►  "normal"  (stop)
-  │
-  ├─ 2. Localise Faster R-CNN lesion detector ─► box
-  │              (no detection → GradCAM of the Stage B model ─► box)
-  ├─ 3. Segment  MedSAM, prompted with the box ─► lesion mask (largest component)
-  ├─ 4. Crop     patch = mask bounding box + 10% margin
-  │
-  └─ 5. Stage B  fine-tuned Mammo-FM classifier on the patch ─► P(malignant)
-                 P(malignant) ≥ 0.058 ─► "malignant", else "benign"
-```
 
-## Quick start
+| Step | What happens | Model |
+|:---:|---|---|
+| ① | Is there anything suspicious in the image? If not, stop and report **normal**. | Mammo-FM + linear head |
+| ② | Where is the lesion? A detector draws a box; if it finds nothing, a GradCAM heat map gives the box. | Faster R-CNN / GradCAM |
+| ③ | Outline the lesion inside the box and cut out a patch around it. | MedSAM |
+| ④ | Is the lesion **benign** or **malignant**? | fine-tuned Mammo-FM |
+
+---
+
+## ⚙️ Installation
 
 ```bash
-# 1. environment (tested: Python 3.10, torch 2.3.0 + CUDA 12.1, transformers 4.37.2)
-conda env create -f environment.yml && conda activate mammo-cascade
-#    or with pip in an existing Python 3.10 env:
-#    pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu121
+git clone https://github.com/MariamHassan20/mammo-pipeline.git
+cd mammo-pipeline
 
-# 2. weights (see weights/README.md)
-huggingface-cli login                # Mammo-FM may be gated: accept its terms on the HF page
-python scripts/download_weights.py   # Mammo-FM -> weights/, MedSAM -> HF cache
-#    then copy mammo_fm_head.pt, stage_b_finetuned.pt, lesion_detector.pt into weights/
+conda env create -f environment.yml
+conda activate mammo-cascade
+```
 
-# 3. run
+<details>
+<summary><b>Using pip instead of conda</b></summary>
+
+```bash
+# Python 3.10
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu121
+# CPU only:
+pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cpu
+```
+</details>
+
+<details>
+<summary><b>Tested versions and hardware</b></summary>
+
+- Python 3.10, torch 2.3.0 + CUDA 12.1, transformers 4.37.2 (full list in `requirements.txt`)
+- One GPU with **≥ 6 GB** memory recommended: all four models stay loaded.
+- Models load once at start-up (about 1 minute); after that each image takes about a second on a recent GPU.
+- CPU works too, just slower.
+- If packages from `~/.local` interfere with the environment, run with `PYTHONNOUSERSITE=1`.
+</details>
+
+---
+
+## 📦 Weights
+
+Weights are **not** stored in this repository. Put them in the `weights/` folder:
+
+| File | Size | Used by | Download |
+|---|---|---|---|
+| `Mammo-FM_BatmanlabTrained_CLIP.tar` | 2.1 GB | Stage A, Stage B | `python scripts/download_weights.py` (from [batmanLab/Mammo-FM](https://huggingface.co/batmanLab/Mammo-FM)) |
+| `mammo_fm_head.pt` | 63 KB | Stage A | **[download](LINK_STAGE_A_HEAD)** |
+| `stage_b_finetuned.pt` | 110 MB | Stage B | **[download](LINK_STAGE_B)** |
+| `lesion_detector.pt` | 159 MB | Detector | **[download](LINK_DETECTOR)** |
+| MedSAM `wanglab/medsam-vit-base` | ~360 MB | Segmentation | downloaded automatically (Hugging Face cache) |
+
+```bash
+huggingface-cli login                 # Mammo-FM may be gated: accept its terms on the model page first
+python scripts/download_weights.py    # Mammo-FM -> weights/, MedSAM -> Hugging Face cache
+# then put mammo_fm_head.pt, stage_b_finetuned.pt and lesion_detector.pt (links above) into weights/
+sha256sum weights/*                   # compare with weights/README.md
+```
+
+<details>
+<summary><b>Weights stored somewhere else?</b></summary>
+
+Point to the folder or to single files with environment variables:
+
+| Variable | Default |
+|---|---|
+| `CASCADE_WEIGHTS_DIR` | `weights/` |
+| `MAMMOFM_CKPT` | `weights/Mammo-FM_BatmanlabTrained_CLIP.tar` |
+| `CASCADE_STAGE_A_HEAD` | `weights/mammo_fm_head.pt` |
+| `CASCADE_STAGE_B_CKPT` | `weights/stage_b_finetuned.pt` |
+| `CASCADE_DETECTOR_CKPT` | `weights/lesion_detector.pt` |
+| `CASCADE_MEDSAM_ID` | `wanglab/medsam-vit-base` |
+| `CASCADE_MEDSAM_FINETUNED` | none (original MedSAM) |
+</details>
+
+---
+
+## 🚀 Run it
+
+```bash
+# one image
 python run_cascade.py --input path/to/view.png --out outputs/
-python run_cascade.py --input path/to/folder/  --out outputs/ --device cuda:0
-```
 
-**Hardware:** one GPU with at least 6 GB of memory is recommended (all four models stay loaded). Models load
-once at start-up (about 1 minute); after that each image takes about a second on a recent GPU. CPU also works,
-but is much slower.
+# a whole folder (searched recursively for .png / .jpg / .tif)
+python run_cascade.py --input path/to/folder/ --out outputs/ --device cuda:0
 
-### Options
-| Flag | Default | Meaning |
-|---|---|---|
-| `--input` | required | image file, or folder (searched recursively for .png/.jpg/.tif) |
-| `--out` | `outputs` | output folder (created if missing) |
-| `--labels` | none | optional ground-truth CSV (`image,label[,mask]`) → adds `metrics.xlsx` and `examples/` |
-| `--anonymize` | off | name all outputs `case_0001`, `case_0002`, … instead of the image file names; the table linking case IDs to images is written next to (not inside) the output folder as `<out>_case_map.csv` |
-| `--device` | `cuda` if available | e.g. `cuda:0`, `cpu` |
-| `--no-detector` | off | skip the detector; localise with GradCAM only |
-| `--stage-b-input` | `patch` | `patch`, `whole` (whole image) or `both` (both scores are reported; the decision uses the patch) |
-| `--pixel-spacing` | none | mm per pixel of the original image (DICOM `PixelSpacing`), to report lesion size in mm |
-| `--stage-a-threshold` | `0.762` | P(abnormal) threshold |
-| `--stage-b-threshold` | from checkpoint (`0.058`) | P(malignant) threshold |
-| `--medsam-finetuned` | none | path to our fine-tuned MedSAM state_dict (default: original MedSAM) |
-
-### Output folder
-```
-<out>/
-├── segmented_tumors/   <name>_patch.png  tumour crop that Stage B classified
-│                       <name>_mask.png   tumour mask (white = tumour)
-├── overlays/           <name>_overlay.png  mammogram with box (orange = detector, magenta = GradCAM),
-│                                           tumour outline (red), scores and decision
-├── json/               <name>.json       everything for one image (format below)
-├── diagnosis.xlsx      one row per image: decision, all probabilities, box, tumour size, file paths,
-│                       warnings/errors (+ true label and Dice/IoU with --labels)
-├── metrics.xlsx        only with --labels: accuracy, AUC (with 95% CI), F1, precision, sensitivity,
-│                       specificity, confusion table, Stage A pass rates, segmentation Dice/IoU
-└── examples/           only with --labels and true masks: 4 cases across the Dice range, each showing
-                        the tumour region (green = true tumour, red = our segmentation), our tumour patch
-                        and the true tumour patch
-```
-Normal images get a JSON, an overlay and a row in `diagnosis.xlsx` (no patch or mask). A bad image never stops
-a batch; its error is recorded in `diagnosis.xlsx`.
-
-**Labels file** (`--labels`): CSV with columns `image` (same path as given to `--input`, or just the file
-name), `label` (`normal`, `benign`, `malignant`, or `0`/`1` for benign/malignant) and optional `mask` (path to
-the true tumour mask). With labels, Stage B is also scored for images Stage A calls normal, so an AUC can be
-computed; the decision itself still follows Stage A.
-```bash
+# with ground truth -> also writes metrics.xlsx and examples/
 python run_cascade.py --input test_images/ --labels labels.csv --out outputs/test_run/
 ```
+
+<details>
+<summary><b>All options</b></summary>
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--input` | required | image file, or folder (searched recursively) |
+| `--out` | `outputs` | output folder (created if missing) |
+| `--labels` | none | ground-truth CSV (`image,label[,mask]`) → adds `metrics.xlsx` and `examples/` |
+| `--anonymize` | off | name outputs `case_0001`, `case_0002`, … instead of the file names; the case-ID ↔ image table is written **next to** the output folder as `<out>_case_map.csv` |
+| `--device` | `cuda` if available | e.g. `cuda:0`, `cpu` |
+| `--no-detector` | off | skip the detector; localise with GradCAM only |
+| `--stage-b-input` | `patch` | `patch`, `whole` (whole image) or `both` (both scores reported; decision uses the patch) |
+| `--pixel-spacing` | none | mm per pixel of the original image (DICOM `PixelSpacing`) → lesion size in mm |
+| `--stage-a-threshold` | `0.762` | P(abnormal) threshold |
+| `--stage-b-threshold` | from checkpoint (`0.058`) | P(malignant) threshold |
+| `--medsam-finetuned` | none | path to a fine-tuned MedSAM state_dict (default: original MedSAM) |
+</details>
+
+<details>
+<summary><b>Labels file format (<code>--labels</code>)</b></summary>
+
+A CSV with:
+
+| Column | Required | Content |
+|---|---|---|
+| `image` | yes | same path as given to `--input`, or just the file name |
+| `label` | yes | `normal`, `benign`, `malignant` (or `0` / `1` for benign / malignant) |
+| `mask` | no | path to the true tumour mask → enables Dice / IoU and the `examples/` figures |
+
+```csv
+image,label,mask
+view_001.png,malignant,masks/view_001_mask.png
+view_002.png,benign,masks/view_002_mask.png
+view_003.png,normal,
+```
+
+With labels, Stage B is also scored for images that Stage A calls normal, so an AUC can be computed. The
+decision itself still follows Stage A.
+</details>
+
+---
+
+## 📁 Outputs
+
+```
+outputs/
+├── segmented_tumors/   <name>_patch.png    tumour crop that Stage B classified
+│                       <name>_mask.png     tumour mask (white = tumour)
+├── overlays/           <name>_overlay.png  mammogram + box + tumour outline + scores + decision
+├── json/               <name>.json         everything for one image
+├── diagnosis.xlsx      one row per image: decision, probabilities, box, size, files, warnings
+├── metrics.xlsx        (--labels) accuracy, AUC + 95% CI, F1, precision, sensitivity, specificity,
+│                       confusion table, Stage A pass rates, segmentation Dice / IoU
+└── examples/           (--labels with masks) 4 cases: true vs predicted outline, our patch, true patch
+```
+
+- **Overlay colours:** orange box = detector, magenta box = GradCAM, red = tumour outline; in `examples/`,
+  green = true tumour.
+- **Normal** images get a JSON, an overlay and a row in `diagnosis.xlsx` (no patch or mask).
+- A bad image never stops a batch; its error is written to `diagnosis.xlsx`.
+
+<details>
+<summary><b>JSON format</b></summary>
 
 ```json
 {
@@ -102,65 +246,80 @@ python run_cascade.py --input test_images/ --labels labels.csv --out outputs/tes
   "seconds": t
 }
 ```
-If Stage A says "normal", only `stage_a` and `decision` are filled. All coordinates are in the *working* image:
-the original, downscaled so its longer side is at most 4000 px. `working_scale` is the factor applied
-(1.0 = unchanged).
+If Stage A says "normal", only `stage_a` and `decision` are filled. Coordinates are in the *working* image:
+the original, downscaled so its longer side is at most 4000 px (`working_scale` = the factor applied).
+</details>
 
-### Python API
+---
+
+## 🧠 The models
+
+| Step | Model | Trained on | Preprocessing | Output |
+|---|---|---|---|---|
+| **Stage A** | Mammo-FM image encoder (EfficientNet-B5, frozen) + `Linear(2048, 3)`, temperature-calibrated | Mammo-Bench (public, 7 sources), patient-level split | CLAHE (2.0, 8×8) → 1520×912 → normalise → 3 ch | P(normal / benign / malignant) |
+| **Detector** | Faster R-CNN ResNet50-FPN (COCO init), classes: background, lesion | multi-centre mass dataset, patient-level split | long side 800 → CLAHE → /255 → 3 ch | lesion box |
+| **Segment** | MedSAM `wanglab/medsam-vit-base` (original weights) | MedSAM's public training data | RGB, longest side 1024, box prompt | binary mask (largest component) |
+| **Stage B** | Mammo-FM EfficientNet-B5, fully fine-tuned + `Linear(2048, 2)` | benign / malignant mammograms | CLAHE → 760×456 → normalise → 3 ch | P(malignant) |
+
+<details>
+<summary><b>How the thresholds were chosen</b></summary>
+
+Both were chosen on validation data during development:
+- **Stage A, 0.762:** maximises balanced accuracy for normal vs abnormal.
+- **Stage B, 0.058:** maximises malignant F2, so it favours sensitivity. Stored in the Stage B checkpoint.
+
+Re-tune both for your own site with `--stage-a-threshold` and `--stage-b-threshold`.
+</details>
+
+---
+
+## 🐍 Python API
+
 ```python
 from mammo_cascade import Cascade
 from mammo_cascade.visualize import save_outputs
 
 casc = Cascade(device="cuda")                    # loads all models once
 result, art = casc.run("view.png", pixel_spacing_mm=0.07, stage_b_input="patch")
-save_outputs(result, art, "outputs/view")        # writes the PNGs
+print(result["decision"])                        # "normal" | "benign" | "malignant"
+save_outputs(result, art, "outputs/view")        # writes overlay, patch and mask PNGs
 ```
 
-### Evaluation script (CSV output, resumable)
-For large evaluations that may be interrupted, `scripts/evaluate_bm.py` runs the full chain on a labelled CSV (`image`, `label` = benign/malignant, optional
-`mask`, `patient`, `group`) and writes `per_image.csv` (resumable) and `metrics.json`. The metrics cover AUC for
-patch and whole image with patient-bootstrap CIs, sensitivity/specificity at the threshold, Stage A pass rates,
-box sources, Dice when lesion masks are given, and per-group AUCs.
+<details>
+<summary><b>Large evaluations (resumable CSV output)</b></summary>
+
+`scripts/evaluate_bm.py` runs the full chain on a labelled CSV (`image`, `label` = benign/malignant, optional
+`mask`, `patient`, `group`) and writes `per_image.csv` (resumable) and `metrics.json`: patch and whole-image AUC
+with patient-bootstrap CIs, sensitivity / specificity, Stage A pass rates, box sources, Dice, per-group AUCs.
+
 ```bash
 python scripts/evaluate_bm.py --csv labelled.csv --out eval_out/ --device cuda:0
 ```
+</details>
 
-## The models
+---
 
-| Step | Model | Trained on | Input preprocessing | Output |
-|---|---|---|---|---|
-| Stage A | Mammo-FM image encoder (EfficientNet-B5, frozen) + `Linear(2048, 3)`, temperature-calibrated | Mammo-Bench (public, 7 sources), patient-level split | CLAHE (clip 2.0, 8×8) → resize 1520×912 (H×W) → normalise (mean 0.3089, std 0.2505) → 3 channels | P(normal / benign / malignant) |
-| Detector | Faster R-CNN ResNet50-FPN (COCO init), 2 classes (background, lesion) | private multi-centre mass dataset, patient-level split | resize long side to 800 → CLAHE → /255 → 3 channels | top-scoring lesion box |
-| Segment | MedSAM `wanglab/medsam-vit-base` (original weights; optional fine-tuned decoder) | MedSAM's public training data | gray → RGB, longest side 1024 (SamProcessor), box prompt in image pixels | binary mask (logit > 0), largest component kept |
-| Stage B | Mammo-FM EfficientNet-B5 fully fine-tuned + `Linear(2048, 2)` | private benign/malignant dataset (whole images) | CLAHE → resize 760×456 (H×W) → normalise → 3 channels | P(malignant) |
+## 📝 Usage notes
 
-Thresholds were chosen on validation data during development:
-- **Stage A, 0.762:** maximises balanced accuracy for normal vs abnormal.
-- **Stage B, 0.058:** maximises malignant F2, so it favours sensitivity. It is stored in the Stage B checkpoint.
+1. **Stage B was trained on whole images.** By default it classifies the lesion patch; use
+   `--stage-b-input both` to see the patch and whole-image scores side by side.
+2. **Thresholds are not universal.** Re-tune them on validation data from your own site.
+3. **The detector was trained on masses.** Calcifications and architectural distortions are not targeted.
+4. **GradCAM** is used only when the detector finds no box; a warning is then written to the JSON.
+5. **Input** is an 8-bit PNG/JPG of one view. No DICOM reading, no laterality/view handling, no CC/MLO fusion.
+   16-bit PNGs are reduced to 8-bit; images longer than 4000 px are downscaled first.
+6. **Lesion size in mm** needs `--pixel-spacing`; the working-scale correction is applied automatically.
 
-Both can be changed with the CLI flags above.
+---
 
-## Usage notes
+## 📜 Licences and credits
 
-1. **Stage B was trained on whole images.** With the default `patch` input it classifies a lesion crop, which
-   differs from what it saw in training. Use `--stage-b-input both` to get the patch and whole-image scores side by side.
-2. **Thresholds are not universal.** Re-tune both on validation data from your own site (`--stage-a-threshold`,
-   `--stage-b-threshold`).
-3. **The detector was trained on masses only.** Calcifications and architectural distortions are not targeted.
-4. **GradCAM fallback** only runs when the detector finds no box. A warning is written to the JSON when it is
-   used.
-5. **MedSAM weights:** original `wanglab/medsam-vit-base` by default. Our fine-tuned decoder can be enabled with
-   `--medsam-finetuned path/to/medsam_finetuned.pt`.
-6. **Input** is an 8-bit PNG/JPG of one view. The code does no DICOM reading, no laterality or view handling,
-   and no CC/MLO fusion. Images are read in grayscale; 16-bit PNGs are reduced to 8-bit. Images whose longer
-   side exceeds 4000 px are downscaled first.
-7. **Lesion size in mm** needs `--pixel-spacing` (mm/px of the original image). The correction for the working
-   scale is applied automatically.
+- **This code:** LICENCE_TO_ADD
+- `mammo_cascade/mfm/` (`efficientnet_custom.py`, `efficient_net_custom_utils.py`, `projection.py`): from the
+  [Mammo-FM](https://huggingface.co/batmanLab/Mammo-FM) repository (batmanLab, Apache-2.0).
+- **Mammo-FM weights:** batmanLab academic licence (non-commercial research only). `mammo_fm_head.pt` and
+  `stage_b_finetuned.pt` are built on Mammo-FM, so its terms apply to them too.
+- **MedSAM** ([wanglab/medsam-vit-base](https://huggingface.co/wanglab/medsam-vit-base)): Apache-2.0.
+- **torchvision** Faster R-CNN: BSD-3-Clause.
 
-## Licences
-- This code: add your licence.
-- `mammo_cascade/mfm/efficientnet_custom.py`, `efficient_net_custom_utils.py`, `projection.py`: from the
-  Mammo-FM repository (batmanLab, Apache-2.0).
-- **Mammo-FM weights**: custom academic licence (non-commercial research only; no redistribution, no hosting
-  as a service). `stage_b_finetuned.pt` and `mammo_fm_head.pt` are derived from Mammo-FM.
-- MedSAM: Apache-2.0. torchvision Faster R-CNN: BSD-3-Clause code.
+If you use this pipeline, please also cite Mammo-FM and MedSAM.

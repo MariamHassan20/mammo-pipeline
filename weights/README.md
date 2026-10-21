@@ -1,14 +1,14 @@
 # Weights
 
-Weights are **not** stored in git (sizes + licences). Put these files in this folder, or point to them with
-the environment variables shown.
+Weights are **not** stored in git (file sizes). Download them with the links below, put them in this folder, or
+point to them with the environment variables shown.
 
 | File (default name) | Size | What it is | Env var to override | How to get it |
 |---|---|---|---|---|
 | `Mammo-FM_BatmanlabTrained_CLIP.tar` | 2.1 GB | Mammo-FM base checkpoint (batmanLab). Used by Stage A. | `MAMMOFM_CKPT` | `python scripts/download_weights.py` (Hugging Face `batmanLab/Mammo-FM`; log in and accept its terms first). **Non-commercial academic licence; do not re-upload.** |
-| `mammo_fm_head.pt` | 63 KB | Stage A head: linear 3-class probe (normal / benign / malignant) on frozen Mammo-FM features, with temperature T = 0.961 | `CASCADE_STAGE_A_HEAD` | from the authors |
-| `stage_b_finetuned.pt` | 110 MB | Stage B: fully fine-tuned Mammo-FM EfficientNet-B5 + Linear(2048, 2), benign (0) / malignant (1). Stores its own threshold (0.058) and input resolution (760). **Contains fine-tuned Mammo-FM weights, so the Mammo-FM licence applies.** | `CASCADE_STAGE_B_CKPT` | from the authors (share privately, not in a public repo) |
-| `lesion_detector.pt` | 159 MB | Faster R-CNN ResNet50-FPN, 2 classes (background, lesion) | `CASCADE_DETECTOR_CKPT` | from the authors (or run with `--no-detector`) |
+| `mammo_fm_head.pt` | 63 KB | Stage A head: linear 3-class probe (normal / benign / malignant) on frozen Mammo-FM features, with temperature T = 0.961 | `CASCADE_STAGE_A_HEAD` | [download](LINK_STAGE_A_HEAD) |
+| `stage_b_finetuned.pt` | 110 MB | Stage B: fully fine-tuned Mammo-FM EfficientNet-B5 + Linear(2048, 2), benign (0) / malignant (1). Stores its own threshold (0.058) and input resolution (760). **Contains fine-tuned Mammo-FM weights, so the Mammo-FM licence applies.** | `CASCADE_STAGE_B_CKPT` | [download](LINK_STAGE_B) |
+| `lesion_detector.pt` | 159 MB | Faster R-CNN ResNet50-FPN, 2 classes (background, lesion) | `CASCADE_DETECTOR_CKPT` | [download](LINK_DETECTOR) (or run with `--no-detector`) |
 | MedSAM | ~360 MB | `wanglab/medsam-vit-base` (Apache-2.0), original weights | `CASCADE_MEDSAM_ID` | downloaded automatically by `transformers` (or `scripts/download_weights.py`) |
 | *(optional)* `medsam_finetuned.pt` | 358 MB | full SamModel state_dict with our fine-tuned mask decoder | `CASCADE_MEDSAM_FINETUNED` | from the authors; off by default |
 
