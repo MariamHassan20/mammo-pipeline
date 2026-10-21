@@ -16,6 +16,7 @@
 [Weights](#-weights) •
 [Run](#-run-it) •
 [Outputs](#-outputs) •
+[Examples](#%EF%B8%8F-example-outputs) •
 [Models](#-the-models) •
 [Python API](#-python-api) •
 [Notes](#-usage-notes)
@@ -249,6 +250,22 @@ outputs/
 If Stage A says "normal", only `stage_a` and `decision` are filled. Coordinates are in the *working* image:
 the original, downscaled so its longer side is at most 4000 px (`working_scale` = the factor applied).
 </details>
+
+---
+
+## 🖼️ Example outputs
+
+The [`results/`](results/) folder shows sample outputs from a test run: four example figures and the
+`diagnosis.xlsx` / `metrics.xlsx` files (anonymised cases).
+
+| Example 1 | Example 2 |
+|:---:|:---:|
+| ![example 1](results/examples/example_1.png) | ![example 2](results/examples/example_2.png) |
+| **Example 3** | **Example 4** |
+| ![example 3](results/examples/example_3.png) | ![example 4](results/examples/example_4.png) |
+
+Green = true tumour outline, red = our segmentation. Each figure shows the tumour region, our tumour patch and
+the true tumour patch.
 
 ---
 
