@@ -24,8 +24,8 @@ def draw_overlay(result, art):
     lines = [f"Stage A  P(abnormal)={a['p_abnormal']:.3f}  (thr {a['threshold']})"]
     if "stage_b" in result:
         b = result["stage_b"]
-        p = b.get("p_malignant_patch", b.get("p_malignant_whole"))
-        lines.append(f"Stage B  P(malignant)={p:.3f}  (thr {b['threshold']})")
+        src = b.get("decision_from", "patch" if "p_malignant_patch" in b else "whole")
+        lines.append(f"Stage B  P(malignant, {src})={b[f'p_malignant_{src}']:.3f}  (thr {b['threshold']})")
     lines.append(f"DECISION: {result['decision'].upper()}   [research use only]")
     fs = max(0.8, g.shape[1] / 1400)
     y = int(40 * fs)

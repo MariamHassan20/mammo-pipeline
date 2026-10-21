@@ -92,6 +92,8 @@ def metrics(rows, thr_b):
     m = {"n_images": len(ok), "n_errors": len(rows) - len(ok),
          "n_benign": int((y == 0).sum()), "n_malignant": int((y == 1).sum()), "n_bootstrap_units": len(units),
          "stage_b_threshold": thr_b}
+    if len(set(y)) < 2:
+        raise SystemExit("metrics need both benign and malignant images in the CSV")
     m["auc_patch"] = round(_auc(y, pp), 4)
     m["auc_patch_ci95"] = _boot(lambda i: _auc(y[i], pp[i]), units)
     m["auc_whole"] = round(_auc(y, pw), 4)

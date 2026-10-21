@@ -142,7 +142,7 @@ def main():
         ex = pick_examples(rows)
         if ex:
             os.makedirs(os.path.join(a.out, "examples"), exist_ok=True)
-            tags = ["high_dice", "upper_mid_dice", "lower_mid_dice", "low_dice"] if len(ex) == 4 else [""] * len(ex)
+            tags = ["high_dice", "upper_mid_dice", "lower_mid_dice", "low_dice"] if len(ex) == 4 else ["dice"] * len(ex)
             for k, r in enumerate(ex, 1):
                 res, art = casc.run(r["_path"], stage_b_input=sb_input, always_classify=True,
                                     decide_on="whole" if a.stage_b_input == "whole" else "patch")
