@@ -1,0 +1,14 @@
+# Conda environment for the mammography cascade (GPU, CUDA 12.1 wheels).
+#   conda env create -f environment.yml
+#   conda activate mammo-cascade
+# Needs an NVIDIA driver that supports CUDA 12.1 (driver >= 530). For CPU only, change the
+# extra index URL below to https://download.pytorch.org/whl/cpu
+name: mammo-cascade
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - --extra-index-url https://download.pytorch.org/whl/cu121
+      - -r requirements.txt

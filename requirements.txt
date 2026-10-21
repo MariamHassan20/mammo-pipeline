@@ -1,0 +1,13 @@
+# Exact versions the cascade was tested with (Python 3.10, CUDA 12.1).
+# Install torch/torchvision first from the PyTorch index that matches your GPU driver, e.g.:
+#   pip install torch==2.3.0 torchvision==0.18.0 --index-url https://download.pytorch.org/whl/cu121
+# (CPU only: --index-url https://download.pytorch.org/whl/cpu)
+torch==2.3.0
+torchvision==0.18.0
+transformers==4.37.2            # SamModel / SamProcessor for MedSAM
+huggingface_hub==0.25.2
+opencv-python-headless==4.10.0.84   # 4.11+ needs numpy 2
+numpy==1.26.0
+omegaconf==2.3.1                # only to unpickle the config stored inside the Mammo-FM checkpoint
+scikit-learn==1.2.2             # metrics (--labels) and scripts/evaluate_bm.py
+openpyxl==3.1.2                 # Excel outputs (diagnosis.xlsx, metrics.xlsx)

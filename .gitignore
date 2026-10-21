@@ -1,0 +1,13 @@
+# weights are never committed (size + licences); see weights/README.md
+weights/*
+!weights/README.md
+outputs/
+__pycache__/
+*.pyc
+# keep patient images out of the repo
+*.dcm
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
