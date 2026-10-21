@@ -75,7 +75,8 @@ class Cascade:
                           used only to report lesion size in mm.
         stage_b_input     "patch" (default), "whole" or "both".
         always_classify   evaluation only: continue to segmentation and Stage B even when Stage A
-                          says "normal" (the Stage A decision is still recorded in stage_a.passed).
+                          says "normal". The decision stays "normal" and those later results are put
+                          under "evaluation_only" instead of the normal keys.
         decide_on         "patch" or "whole": which Stage B score sets the decision when both are
                           computed (default: patch if available).
         Returns (result_dict, artefacts) where artefacts holds arrays for visualisation.
@@ -99,6 +100,7 @@ class Cascade:
             return res, art
 
         # 2. Localise ---------------------------------------------------------------
+        n_warn = len(res["warnings"])
         box, source, score = None, None, None
         if self.detector is not None:
             box, score = self.detector(gray)
@@ -154,5 +156,12 @@ class Cascade:
         sb["decision"] = "malignant" if p_dec >= self.thr_b else "benign"
         res["stage_b"] = sb
         res["decision"] = sb["decision"] if res["stage_a"]["passed"] else "normal"
+        if not res["stage_a"]["passed"]:
+            # always_classify run: the image stopped at Stage A, so the later steps are not part of its
+            # result; keep them apart (used only for evaluation metrics such as AUC)
+            res["evaluation_only"] = {k: res.pop(k) for k in ("localisation", "segmentation", "patch", "stage_b")
+                                      if k in res}
+            res["evaluation_only"]["warnings"] = res["warnings"][n_warn:]
+            res["warnings"] = res["warnings"][:n_warn]
         res["seconds"] = round(time.time() - t0, 2)
         return res, art

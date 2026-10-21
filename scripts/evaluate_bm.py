@@ -153,10 +153,11 @@ def main():
             try:
                 row["label"] = _label(it["label"])
                 res, art = casc.run(it["image"], stage_b_input="both", always_classify=True)
-                loc, sb = res.get("localisation", {}), res["stage_b"]
+                full = res.get("evaluation_only", res)      # images stopped at Stage A keep their scores here
+                loc, sb = full.get("localisation", {}), full["stage_b"]
                 row.update(p_abnormal=res["stage_a"]["p_abnormal"], stage_a_passed=res["stage_a"]["passed"],
                            box_source=loc.get("source") or "", box_score=loc.get("score") or "",
-                           lesion_area_px=res.get("segmentation", {}).get("area_px", ""),
+                           lesion_area_px=full.get("segmentation", {}).get("area_px", ""),
                            p_mal_patch=sb["p_malignant_patch"], p_mal_whole=sb["p_malignant_whole"])
                 if it.get("mask"):
                     dsc = _dice(art["mask"], it["mask"], art["gray"].shape)

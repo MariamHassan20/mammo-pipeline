@@ -69,13 +69,14 @@ def save_image_outputs(result, art, out_dir, name):
     paths = {"overlay": os.path.join("overlays", f"{name}_overlay.png")}
     cv2.imwrite(os.path.join(out_dir, paths["overlay"]), draw_overlay(result, art))
     g = art["gray"]
-    if art.get("crop_box") is not None:
-        x0, y0, x1, y1 = art["crop_box"]
-        paths["patch"] = os.path.join("segmented_tumors", f"{name}_patch.png")
-        cv2.imwrite(os.path.join(out_dir, paths["patch"]), g[y0:y1, x0:x1])
-    if art.get("mask") is not None and art["mask"].any():
-        paths["mask"] = os.path.join("segmented_tumors", f"{name}_mask.png")
-        cv2.imwrite(os.path.join(out_dir, paths["mask"]), art["mask"] * 255)
+    if result["stage_a"]["passed"]:              # normal images get no tumour patch or mask
+        if art.get("crop_box") is not None:
+            x0, y0, x1, y1 = art["crop_box"]
+            paths["patch"] = os.path.join("segmented_tumors", f"{name}_patch.png")
+            cv2.imwrite(os.path.join(out_dir, paths["patch"]), g[y0:y1, x0:x1])
+        if art.get("mask") is not None and art["mask"].any():
+            paths["mask"] = os.path.join("segmented_tumors", f"{name}_mask.png")
+            cv2.imwrite(os.path.join(out_dir, paths["mask"]), art["mask"] * 255)
     with open(os.path.join(out_dir, "json", f"{name}.json"), "w") as f:
         json.dump(result, f, indent=2)
     return paths
@@ -117,7 +118,17 @@ def diagnosis_row(image, result, paths, truth=None, dice=None, iou=None, error="
         return {"image": image, "decision": "ERROR", "true_label": truth, "error": error}
     a, sb = result["stage_a"], result.get("stage_b", {})
     loc, seg = result.get("localisation", {}), result.get("segmentation", {})
+    stopped = not a["passed"]
+    ev = result.get("evaluation_only", {})
+    # images stopped at Stage A show no later-step values; those are kept only for the metrics
+    hidden = {"p_malignant_patch": ev.get("stage_b", {}).get("p_malignant_patch"),
+              "p_malignant_whole": ev.get("stage_b", {}).get("p_malignant_whole"),
+              "box_source": ev.get("localisation", {}).get("source"),
+              "dice": None if dice is None else round(dice, 4), "iou": None if iou is None else round(iou, 4)}
+    if stopped:
+        dice = iou = None
     return {
+        "_eval": hidden if stopped else {},
         "image": image, "decision": result["decision"], "true_label": truth,
         "correct": (result["decision"] == truth) if truth else None,
         "p_normal": a["probs"].get("normal"), "p_benign": a["probs"].get("benign"),
@@ -169,6 +180,12 @@ def _binary(y, p):
             "TP": tp, "FP": fp, "TN": tn, "FN": fn}
 
 
+def _val(r, k):
+    """Value for the metrics: the visible one, or the evaluation-only one for images stopped at Stage A."""
+    v = r.get(k)
+    return v if v is not None else r.get("_eval", {}).get(k)
+
+
 def write_metrics(rows, path, settings):
     ok = [r for r in rows if r.get("true_label") and r["decision"] != "ERROR"]
     wb = Workbook()
@@ -195,7 +212,7 @@ def write_metrics(rows, path, settings):
     yb = [r["true_label"] == "malignant" for r in bm]
     for key, label in (("p_malignant_patch", "Stage B on tumour patch"), ("p_malignant_whole", "Stage B on whole image"),
                        ("p_malignant", "Stage A P(malignant)")):
-        sc = [r.get(key) for r in bm]
+        sc = [_val(r, key) for r in bm]
         if bm and all(v is not None for v in sc):
             lo, hi = _auc_ci(yb, sc)
             cls_rows.append([f"  {label}", R(_auc(yb, sc)), f"{lo} - {hi}"])
@@ -216,14 +233,15 @@ def write_metrics(rows, path, settings):
     _sheet(wb, "confusion", ["", "pred normal", "pred benign", "pred malignant"], conf)
 
     # segmentation
-    seg = [r for r in ok if r.get("dice") is not None]
+    # segmentation is scored on every image with a true mask, including those stopped at Stage A
+    seg = [r for r in ok if _val(r, "dice") is not None]
     if seg:
-        d, j = np.array([r["dice"] for r in seg]), np.array([r["iou"] for r in seg])
-        srows = [["images with a ground-truth mask", len(seg)],
+        d, j = np.array([_val(r, "dice") for r in seg]), np.array([_val(r, "iou") for r in seg])
+        srows = [["images with a ground-truth mask (all, including those stopped at Stage A)", len(seg)],
                  ["Dice mean", R(d.mean())], ["Dice median", R(np.median(d))], ["Dice std", R(d.std())],
                  ["IoU mean", R(j.mean())], ["IoU median", R(np.median(j))], ["fraction Dice >= 0.5", R((d >= 0.5).mean())]]
-        for src in sorted({r["box_source"] or "none" for r in seg}):
-            ds = np.array([r["dice"] for r in seg if (r["box_source"] or "none") == src])
+        for src in sorted({_val(r, "box_source") or "none" for r in seg}):
+            ds = np.array([_val(r, "dice") for r in seg if (_val(r, "box_source") or "none") == src])
             srows.append([f"Dice mean, box from {src} (n={len(ds)})", R(ds.mean())])
         _sheet(wb, "segmentation", ["metric", "value"], srows)
 

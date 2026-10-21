@@ -207,8 +207,9 @@ view_002.png,benign,masks/view_002_mask.png
 view_003.png,normal,
 ```
 
-With labels, Stage B is also scored for images that Stage A calls normal, so an AUC can be computed. The
-decision itself still follows Stage A.
+With labels, Stage B is also scored for images that Stage A calls normal, so an AUC can be computed. These
+images still get the decision "normal" and are shown as normal everywhere (overlay without box or outline, no
+patch or mask, empty Stage B columns in `diagnosis.xlsx`); their extra scores are used only in `metrics.xlsx`.
 </details>
 
 ---
@@ -252,7 +253,8 @@ outputs/
   "seconds": t
 }
 ```
-If Stage A says "normal", only `stage_a` and `decision` are filled. Coordinates are in the *working* image:
+If Stage A says "normal", only `stage_a` and `decision` are filled (with `--labels`, the scores computed for
+evaluation are kept separately under `evaluation_only`). Coordinates are in the *working* image:
 the original, downscaled so its longer side is at most 4000 px (`working_scale` = the factor applied).
 </details>
 
