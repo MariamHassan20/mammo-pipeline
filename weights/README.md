@@ -18,7 +18,7 @@ SHA-256 checksums:
 ```
 58ae959de52d563acc1d43f50571498eddcd4fb7ca599e706540fdd319e3599b  Mammo-FM_BatmanlabTrained_CLIP.tar
 8242ab1e5554946989435de747ac5577b90fa11bd01bdf34064893babd069377  mammo_fm_head.pt
-0b2e62ea5af0a29a8f52d992d65ed4d999a4a7fb71cc283907191da9fe3bfac2  stage_b_finetuned.pt
+ec29d8db7aa974617968b77c3022a62f72661efc12c1168e6e1279d0aabbaa77  stage_b_finetuned.pt
 da1f3a9ad24ff22df93ad4914c2c2030548550ad2ff3b6066e162822d0474ecb  lesion_detector.pt
 1cc236a14943a20a672aa3783ee2eb4cfca3f4cec547de93f337f7c625882f08  medsam_finetuned.pt   (optional)
 ```
