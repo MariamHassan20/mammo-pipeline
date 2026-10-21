@@ -81,6 +81,11 @@ flowchart LR
 | ③ | Outline the lesion inside the box and cut out a patch around it. | MedSAM |
 | ④ | Is the lesion **benign** or **malignant**? | fine-tuned Mammo-FM |
 
+**Example result:** full breast → tumour region → our tumour patch → true tumour patch
+(green = true tumour, red = our segmentation, yellow box = zoomed region). More in [Example outputs](#%EF%B8%8F-example-outputs).
+
+![example result](results/examples/example_1.png)
+
 ---
 
 ## ⚙️ Installation
