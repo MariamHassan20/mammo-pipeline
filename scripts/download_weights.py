@@ -2,9 +2,9 @@
 """
 Download the public weights into weights/ (Mammo-FM) and the Hugging Face cache (MedSAM).
 
-Mammo-FM (batmanLab/Mammo-FM) is released for non-commercial academic research only and
-may be gated: log in first (`huggingface-cli login`) and accept its terms on the model page.
-Our own checkpoints (Stage A head, Stage B, detector) are NOT downloaded here; see weights/README.md.
+Mammo-FM (batmanLab/Mammo-FM) is released for non-commercial academic research only.
+Our own checkpoints (Stage A head, Stage B, detector) are NOT downloaded here: get them from the links in
+README.md and put them in weights/. The script lists which of them are still missing.
 """
 import os
 import shutil
@@ -25,6 +25,13 @@ def main():
         print(f"Mammo-FM -> {dst}")
     snapshot_download("wanglab/medsam-vit-base")
     print("MedSAM (wanglab/medsam-vit-base) cached in the Hugging Face cache")
+    missing = [f for f in ("mammo_fm_head.pt", "stage_b_finetuned.pt", "lesion_detector.pt")
+               if not os.path.exists(os.path.join(WEIGHTS, f))]
+    if missing:
+        print(f"\nStill missing in {WEIGHTS}: {', '.join(missing)}\n"
+              "Download them from the links in README.md (section 'Weights', step 2).")
+    else:
+        print("\nAll weights are in place.")
 
 
 if __name__ == "__main__":

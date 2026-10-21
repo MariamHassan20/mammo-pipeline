@@ -123,22 +123,33 @@ pip install -r requirements.txt --extra-index-url https://download.pytorch.org/w
 
 ## 📦 Weights
 
-Weights are **not** stored in this repository. Put them in the `weights/` folder:
+Weights are **not** stored in the repository code. Five are needed; put them in the `weights/` folder.
 
-| File | Size | Used by | Download |
-|---|---|---|---|
-| `Mammo-FM_BatmanlabTrained_CLIP.tar` | 2.1 GB | Stage A, Stage B | `python scripts/download_weights.py` (from [batmanLab/Mammo-FM](https://huggingface.co/batmanLab/Mammo-FM)) |
-| `mammo_fm_head.pt` | 63 KB | Stage A | **[download](LINK_STAGE_A_HEAD)** |
-| `stage_b_finetuned.pt` | 110 MB | Stage B | **[download](LINK_STAGE_B)** |
-| `lesion_detector.pt` | 159 MB | Detector | **[download](LINK_DETECTOR)** |
-| MedSAM `wanglab/medsam-vit-base` | ~360 MB | Segmentation | downloaded automatically (Hugging Face cache) |
+**Step 1: public weights, downloaded automatically**
 
 ```bash
-huggingface-cli login                 # Mammo-FM may be gated: accept its terms on the model page first
-python scripts/download_weights.py    # Mammo-FM -> weights/, MedSAM -> Hugging Face cache
-# then put mammo_fm_head.pt, stage_b_finetuned.pt and lesion_detector.pt (links above) into weights/
-sha256sum weights/*                   # compare with weights/README.md
+python scripts/download_weights.py
 ```
+This downloads:
+- **Mammo-FM** (`Mammo-FM_BatmanlabTrained_CLIP.tar`, 2.1 GB): the original foundation model from
+  [batmanLab/Mammo-FM](https://huggingface.co/batmanLab/Mammo-FM), saved to `weights/`. Stage A runs on it.
+- **MedSAM** (`wanglab/medsam-vit-base`, ~360 MB): the original public weights, saved to the Hugging Face cache.
+
+**Step 2: our trained weights, downloaded by hand into `weights/`**
+
+| File | Size | What it is | Download |
+|---|---|---|---|
+| `mammo_fm_head.pt` | 63 KB | Stage A head on top of Mammo-FM (normal / benign / malignant) | **[download](LINK_STAGE_A_HEAD)** |
+| `stage_b_finetuned.pt` | 110 MB | Stage B: fully fine-tuned Mammo-FM (benign / malignant); self-contained | **[download](LINK_STAGE_B)** |
+| `lesion_detector.pt` | 159 MB | Faster R-CNN lesion detector | **[download](LINK_DETECTOR)** |
+
+**Step 3: check**
+
+```bash
+ls weights/      # Mammo-FM_BatmanlabTrained_CLIP.tar  mammo_fm_head.pt  stage_b_finetuned.pt  lesion_detector.pt
+sha256sum weights/*.pt weights/*.tar      # compare with weights/README.md
+```
+If a file is missing, the pipeline stops at start-up and names the missing file.
 
 <details>
 <summary><b>Weights stored somewhere else?</b></summary>
