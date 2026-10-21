@@ -81,6 +81,8 @@ class Cascade:
                           computed (default: patch if available).
         Returns (result_dict, artefacts) where artefacts holds arrays for visualisation.
         """
+        if stage_b_input not in ("patch", "whole", "both"):
+            raise ValueError(f"stage_b_input must be 'patch', 'whole' or 'both', not {stage_b_input!r}")
         t0 = time.time()
         orig = read_gray(image_path)
         gray, scale = cap_size(orig)
@@ -108,7 +110,7 @@ class Cascade:
         if box is None:
             box = _gradcam_box(self.stage_b.gradcam(gray))
             source, score = ("gradcam", None) if box is not None else (None, None)
-            if self.detector is not None:
+            if self.detector is not None and box is not None:
                 res["warnings"].append("detector found no lesion; used GradCAM fallback")
         res["localisation"] = {"box_xyxy": box, "source": source,
                                "score": round(score, 4) if score is not None else None}
@@ -125,12 +127,12 @@ class Cascade:
                 sp = float(pixel_spacing_mm) / scale            # mm per pixel at the working resolution
                 seg["area_mm2"] = round(area * sp * sp, 1)
                 seg["equiv_diameter_mm"] = round(float(np.sqrt(4 * area * sp * sp / np.pi)), 1)
-            if area == 0:
-                res["warnings"].append("empty mask; patch taken from the prompt box")
+            if area <= 20:
+                res["warnings"].append("empty or tiny mask; patch taken from the prompt box")
             res["segmentation"] = seg
             art["mask"] = mask
         else:
-            res["warnings"].append("no lesion box found; Stage B runs on the whole image")
+            res["warnings"].append("no lesion box found (detector and GradCAM); Stage B runs on the whole image")
 
         # 4. Crop -------------------------------------------------------------------
         if box is not None:
@@ -143,17 +145,18 @@ class Cascade:
 
         # 5. Stage B ----------------------------------------------------------------
         sb = {"threshold": round(self.thr_b, 4), "input": stage_b_input}
+        if box is None:
+            sb["patch_is_whole_image"] = True       # no lesion box: the "patch" score is the whole image
+        p = {}
         if stage_b_input in ("patch", "both"):
-            sb["p_malignant_patch"] = round(self.stage_b(patch), 4)
+            p["patch"] = self.stage_b(patch)
         if stage_b_input in ("whole", "both"):
-            sb["p_malignant_whole"] = round(self.stage_b(gray), 4)
-        if decide_on == "whole" and "p_malignant_whole" in sb:
-            src = "whole"
-        else:
-            src = "patch" if "p_malignant_patch" in sb else "whole"
-        p_dec = sb[f"p_malignant_{src}"]
+            p["whole"] = self.stage_b(gray)
+        for k, v in p.items():
+            sb[f"p_malignant_{k}"] = round(v, 4)
+        src = "whole" if decide_on == "whole" and "whole" in p else ("patch" if "patch" in p else "whole")
         sb["decision_from"] = src
-        sb["decision"] = "malignant" if p_dec >= self.thr_b else "benign"
+        sb["decision"] = "malignant" if p[src] >= self.thr_b else "benign"     # unrounded score
         res["stage_b"] = sb
         res["decision"] = sb["decision"] if res["stage_a"]["passed"] else "normal"
         if not res["stage_a"]["passed"]:

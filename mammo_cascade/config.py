@@ -1,8 +1,9 @@
 """
 Default paths and thresholds for the cascade.
 
-Every path can be overridden with an environment variable or a CLI flag
-(see run_cascade.py). Relative paths are resolved against the repo's weights/ folder.
+Every weight path can be overridden with an environment variable (MedSAM's fine-tuned decoder also with
+--medsam-finetuned). Default file names are looked up in the repo's weights/ folder (or CASCADE_WEIGHTS_DIR);
+a relative path given in an environment variable is resolved against the current working directory.
 
 Thresholds were chosen on VALIDATION data during development (never on test):
   - STAGE_A_THRESHOLD 0.762: P(abnormal) = p_benign + p_malignant from the 3-class
@@ -43,5 +44,7 @@ DETECTOR_MIN_SCORE = 0.05          # torchvision's own default box_score_thresh
 DETECTOR_LONG_SIDE = 800           # detector was trained with the long side resized to 800
 STAGE_B_RES = 760                  # Stage B input: 760 x 456 (H x W)
 MAX_SIDE = 4000                    # images with a longer side are downscaled first
+MIN_SIDE = 256                     # smaller images are rejected (not a full mammogram view)
+MIN_BOX_SIDE = 8                   # detector boxes thinner than this (px) are ignored
 CROP_PAD_FRAC = 0.10               # crop = mask bbox + 10% of its longer side + 5 px
 GRADCAM_BOX_CAP = 0.22             # GradCAM fallback box capped at 22% of W and H

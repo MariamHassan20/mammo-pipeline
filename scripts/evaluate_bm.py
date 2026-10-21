@@ -25,6 +25,7 @@ import cv2
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from mammo_cascade import Cascade  # noqa: E402
+from mammo_cascade import config as C  # noqa: E402
 from mammo_cascade.models import cap_size  # noqa: E402
 
 FIELDS = ["image", "label", "patient", "group", "p_abnormal", "stage_a_passed", "box_source", "box_score",
@@ -41,13 +42,13 @@ def _label(v):
 
 
 def _dice(pred, gt_path, shape):
-    gt = cv2.imread(gt_path, cv2.IMREAD_GRAYSCALE)
+    gt = cv2.imread(gt_path, cv2.IMREAD_GRAYSCALE | cv2.IMREAD_ANYDEPTH)
     if gt is None:
         return None
     gt, _ = cap_size(gt)
     if gt.shape != shape:
         gt = cv2.resize(gt, (shape[1], shape[0]), interpolation=cv2.INTER_NEAREST)
-    g = gt > 127
+    g = gt > (0 if gt.max() <= 1 else gt.max() / 2)      # masks stored as 0/1, 0/255 or 16-bit
     if not g.any():
         return None
     p = pred > 0 if pred is not None else np.zeros_like(g)
@@ -125,19 +126,27 @@ def metrics(rows, thr_b):
     return m
 
 
+def _read_rows(per):
+    """per_image.csv rows, keeping only the latest row per image (a retried image appears twice)."""
+    with open(per, newline="") as f:
+        return list({r["image"]: r for r in csv.DictReader(f)}.values())
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--csv", required=True)
     ap.add_argument("--out", default="eval_out")
     ap.add_argument("--device", default=None)
     ap.add_argument("--no-detector", action="store_true")
-    ap.add_argument("--medsam-finetuned", default=None)
+    ap.add_argument("--medsam-finetuned", default=C.MEDSAM_FINETUNED)
     a = ap.parse_args()
 
-    items = list(csv.DictReader(open(a.csv)))
+    with open(a.csv, newline="", encoding="utf-8-sig") as f:
+        items = list(csv.DictReader(f))
     os.makedirs(a.out, exist_ok=True)
     per = os.path.join(a.out, "per_image.csv")
-    done = {r["image"] for r in csv.DictReader(open(per))} if os.path.exists(per) else set()
+    # images that ran without error are skipped on resume; failed ones are retried
+    done = {r["image"] for r in _read_rows(per) if not r["error"]} if os.path.exists(per) else set()
     todo = [it for it in items if it["image"] not in done]
     print(f"{len(items)} images, {len(done)} already done, {len(todo)} to run", flush=True)
 
@@ -169,7 +178,7 @@ def main():
             if k % 50 == 0 or k == len(todo):
                 print(f"  {k}/{len(todo)}", flush=True)
 
-    rows = list(csv.DictReader(open(per)))
+    rows = _read_rows(per)
     m = metrics(rows, casc.thr_b)
     json.dump(m, open(os.path.join(a.out, "metrics.json"), "w"), indent=2)
     print(json.dumps(m, indent=2))

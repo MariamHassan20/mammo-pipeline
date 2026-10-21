@@ -24,10 +24,19 @@ def _require(path, what, hint):
 
 # ------------------------------------------------------------------ preprocessing
 def read_gray(path):
-    """Read an image as 8-bit grayscale (HxW uint8)."""
-    g = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    """Read an image as 8-bit grayscale (HxW uint8). 16-bit images (e.g. 12-bit mammograms) are min-max
+    scaled to 0-255; reading them as plain 8-bit would keep only the high byte and give a near-black image."""
+    g = cv2.imread(path, cv2.IMREAD_GRAYSCALE | cv2.IMREAD_ANYDEPTH)
     if g is None:
-        raise FileNotFoundError(f"cannot read image: {path}")
+        raise ValueError(f"cannot read image: {os.path.basename(path)}")
+    if g.dtype != np.uint8:
+        g = g.astype(np.float32)
+        lo, hi = float(g.min()), float(g.max())
+        g = ((g - lo) * (255.0 / max(hi - lo, 1e-6))).round().astype(np.uint8)
+    if min(g.shape) < C.MIN_SIDE:
+        raise ValueError(f"image too small ({g.shape[1]}x{g.shape[0]} px); expected a full mammogram view")
+    if float(g.std()) < 2.0:
+        raise ValueError("image is blank (almost uniform)")
     return g
 
 
@@ -129,7 +138,7 @@ class StageB:
         logit.backward()
         alpha = fm.grad.mean(dim=(2, 3), keepdim=True)
         cam = torch.relu((alpha * fm).sum(1))[0].detach().cpu().numpy()
-        cam = (cam - cam.min()) / (cam.max() + 1e-8)
+        cam = (cam - cam.min()) / (cam.max() - cam.min() + 1e-8)
         return cv2.resize(cam, (gray.shape[1], gray.shape[0]))
 
 
@@ -155,10 +164,15 @@ class LesionDetector:
         g = _clahe(cv2.resize(gray, (int(gray.shape[1] * sc), int(gray.shape[0] * sc)), interpolation=cv2.INTER_AREA))
         x = torch.from_numpy(g.astype(np.float32) / 255.0)[None].repeat(3, 1, 1).to(self.device)
         out = self.model([x])[0]
-        if len(out["boxes"]) == 0 or float(out["scores"][0]) < self.min_score:
-            return None, 0.0
-        box = (out["boxes"][0].cpu().numpy() / sc).round().astype(int).tolist()
-        return box, float(out["scores"][0])
+        H, W = gray.shape
+        for b, s in zip(out["boxes"].cpu().numpy(), out["scores"].cpu().numpy()):   # sorted by score
+            if float(s) < self.min_score:
+                break
+            x0, y0, x1, y1 = (b / sc).round().astype(int).tolist()
+            x0, y0, x1, y1 = max(0, x0), max(0, y0), min(W, x1), min(H, y1)
+            if x1 - x0 >= C.MIN_BOX_SIDE and y1 - y0 >= C.MIN_BOX_SIDE:            # skip degenerate boxes
+                return [x0, y0, x1, y1], float(s)
+        return None, 0.0
 
 
 # ------------------------------------------------------------------ MedSAM

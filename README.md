@@ -198,7 +198,7 @@ A CSV with:
 |---|---|---|
 | `image` | yes | same path as given to `--input`, or just the file name |
 | `label` | yes | `normal`, `benign`, `malignant` (or `0` / `1` for benign / malignant) |
-| `mask` | no | path to the true tumour mask → enables Dice / IoU and the `examples/` figures |
+| `mask` | no | path to the true tumour mask (white = tumour; 0/255 or 0/1) → enables Dice / IoU and the `examples/` figures |
 
 ```csv
 image,label,mask
@@ -218,7 +218,7 @@ patch or mask, empty Stage B columns in `diagnosis.xlsx`); their extra scores ar
 
 ```
 outputs/
-├── segmented_tumors/   <name>_patch.png    tumour crop that Stage B classified
+├── segmented_tumors/   <name>_patch.png    tumour crop (what Stage B classifies by default)
 │                       <name>_mask.png     tumour mask (white = tumour)
 ├── overlays/           <name>_overlay.png  mammogram + box + tumour outline + scores + decision
 ├── json/               <name>.json         everything for one image
@@ -253,7 +253,7 @@ outputs/
   "seconds": t
 }
 ```
-If Stage A says "normal", only `stage_a` and `decision` are filled (with `--labels`, the scores computed for
+If Stage A says "normal", `localisation`, `segmentation`, `patch` and `stage_b` are absent (with `--labels`, the scores computed for
 evaluation are kept separately under `evaluation_only`). Coordinates are in the *working* image:
 the original, downscaled so its longer side is at most 4000 px (`working_scale` = the factor applied).
 </details>
@@ -331,8 +331,9 @@ python scripts/evaluate_bm.py --csv labelled.csv --out eval_out/ --device cuda:0
 2. **Thresholds are not universal.** Re-tune them on validation data from your own site.
 3. **The detector was trained on masses.** Calcifications and architectural distortions are not targeted.
 4. **GradCAM** is used only when the detector finds no box; a warning is then written to the JSON.
-5. **Input** is an 8-bit PNG/JPG of one view. No DICOM reading, no laterality/view handling, no CC/MLO fusion.
-   16-bit PNGs are reduced to 8-bit; images longer than 4000 px are downscaled first.
+5. **Input** is a PNG/JPG/TIFF of one view. No DICOM reading, no laterality/view handling, no CC/MLO fusion.
+   16-bit images (e.g. 12-bit mammograms) are scaled to 8-bit; images longer than 4000 px are downscaled first.
+   Images smaller than 256 px or blank images are rejected with an error in `diagnosis.xlsx`.
 6. **Lesion size in mm** needs `--pixel-spacing`; the working-scale correction is applied automatically.
 
 ---

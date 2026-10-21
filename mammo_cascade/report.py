@@ -27,15 +27,26 @@ def load_labels(path):
     """CSV with columns image, label (normal/benign/malignant or 0=benign/1=malignant), optional mask."""
     import csv
     norm = {"0": "benign", "1": "malignant", "cancer": "malignant"}
-    out = {}
-    for r in csv.DictReader(open(path)):
-        lab = str(r.get("label", "")).strip().lower()
-        lab = norm.get(lab, lab)
-        if lab not in CLASSES:
-            raise ValueError(f"unknown label '{r.get('label')}' for {r.get('image')}")
-        rec = {"label": lab, "mask": (r.get("mask") or "").strip() or None}
-        out[os.path.abspath(r["image"])] = rec
-        out.setdefault(os.path.basename(r["image"]), rec)
+    out, by_name = {}, {}
+    with open(path, newline="", encoding="utf-8-sig") as f:      # utf-8-sig: CSVs saved by Excel
+        reader = csv.DictReader(f)
+        if not reader.fieldnames or not {"image", "label"} <= set(reader.fieldnames):
+            raise ValueError(f"labels file needs the columns 'image' and 'label'; found {reader.fieldnames}")
+        for r in reader:
+            if not (r.get("image") or "").strip():
+                continue                                         # blank line
+            lab = str(r.get("label") or "").strip().lower()
+            lab = norm.get(lab, lab)
+            if lab not in CLASSES:
+                raise ValueError(f"unknown label '{r.get('label')}' for {r.get('image')}")
+            img = r["image"].strip()
+            rec = {"label": lab, "mask": (r.get("mask") or "").strip() or None}
+            out[os.path.abspath(img)] = rec
+            by_name.setdefault(os.path.basename(img), []).append(rec)
+    # a bare file name is only used when it is unique in the CSV (same names in different folders are ambiguous)
+    for name, recs in by_name.items():
+        if len(recs) == 1:
+            out.setdefault(name, recs[0])
     return out
 
 
@@ -45,13 +56,13 @@ def lookup(labels, image_path):
 
 def gt_mask(path, shape):
     """Ground-truth mask resized to the working image (same 4000-px cap as the pipeline)."""
-    m = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    m = cv2.imread(path, cv2.IMREAD_GRAYSCALE | cv2.IMREAD_ANYDEPTH)
     if m is None:
         return None
     m, _ = cap_size(m)
     if m.shape != shape:
         m = cv2.resize(m, (shape[1], shape[0]), interpolation=cv2.INTER_NEAREST)
-    m = (m > 127).astype(np.uint8)
+    m = (m > (0 if m.max() <= 1 else m.max() / 2)).astype(np.uint8)   # masks stored as 0/1, 0/255 or 16-bit
     return m if m.any() else None
 
 
@@ -189,6 +200,12 @@ def _val(r, k):
 def write_metrics(rows, path, settings):
     ok = [r for r in rows if r.get("true_label") and r["decision"] != "ERROR"]
     wb = Workbook()
+    if not ok:
+        _sheet(wb, "classification", ["metric", "value"],
+               [["images with ground truth", 0], ["note", "no input image matched a row of the labels file"]],
+               first=True)
+        wb.save(path)
+        return
     R = lambda v: None if v is None else round(float(v), 4)
     cls_rows = [["images with ground truth", len(ok), ""]]
     for c in CLASSES:

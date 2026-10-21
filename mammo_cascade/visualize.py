@@ -26,7 +26,8 @@ def draw_overlay(result, art):
     if "stage_b" in result:
         b = result["stage_b"]
         src = b.get("decision_from", "patch" if "p_malignant_patch" in b else "whole")
-        lines.append(f"Stage B  P(malignant, {src})={b[f'p_malignant_{src}']:.3f}  (thr {b['threshold']})")
+        what = "whole image, no lesion box" if src == "patch" and b.get("patch_is_whole_image") else src
+        lines.append(f"Stage B  P(malignant, {what})={b[f'p_malignant_{src}']:.3f}  (thr {b['threshold']})")
     note = " (stopped at Stage A)" if stopped else ""
     lines.append(f"DECISION: {result['decision'].upper()}{note}   [research use only]")
     fs = max(0.8, g.shape[1] / 1400)

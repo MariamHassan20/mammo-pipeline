@@ -36,11 +36,13 @@ from mammo_cascade import report as R
 EXTS = (".png", ".jpg", ".jpeg", ".tif", ".tiff")
 
 
-def list_images(path):
+def list_images(path, out_dir):
     if os.path.isfile(path):
         return [path]
+    out_abs = os.path.abspath(out_dir) + os.sep
     files = [f for f in sorted(glob.glob(os.path.join(path, "**", "*"), recursive=True))
-             if f.lower().endswith(EXTS) and not f.lower().endswith(("_overlay.png", "_patch.png", "_mask.png"))]
+             if f.lower().endswith(EXTS) and not f.lower().endswith(("_overlay.png", "_patch.png", "_mask.png"))
+             and not os.path.abspath(f).startswith(out_abs)]          # never read our own outputs
     if not files:
         sys.exit(f"no images found under {path}")
     return files
@@ -86,7 +88,7 @@ def main():
                     help="optional SamModel state_dict with a fine-tuned decoder (default: original MedSAM)")
     a = ap.parse_args()
 
-    images = list_images(a.input)
+    images = list_images(a.input, a.out)
     if a.anonymize:
         names = [f"case_{i:04d}" for i in range(1, len(images) + 1)]
         map_path = os.path.abspath(a.out.rstrip("/\\")) + "_case_map.csv"
@@ -124,8 +126,11 @@ def main():
             print(f"[{i}/{len(images)}] {name}: {res['decision']} ({res['seconds']}s)", flush=True)
         except Exception as e:      # one bad image must not stop a batch
             traceback.print_exc()
+            err = repr(e)
+            if a.anonymize:         # keep file names out of the outputs
+                err = err.replace(img, name).replace(os.path.basename(img), name)
             row = R.diagnosis_row(name if a.anonymize else img, None, {},
-                                  truth["label"] if truth else None, error=repr(e))
+                                  truth["label"] if truth else None, error=err)
             print(f"[{i}/{len(images)}] {name}: ERROR {e!r}", flush=True)
         row["_name"], row["_path"] = name, img
         rows.append(row)
@@ -133,7 +138,7 @@ def main():
     R.write_diagnosis(rows, os.path.join(a.out, "diagnosis.xlsx"))
     print(f"diagnosis: {os.path.join(a.out, 'diagnosis.xlsx')}")
     if labels:
-        settings = {"stage_a_threshold": casc.thr_a, "stage_b_threshold": casc.thr_b,
+        settings = {"stage_a_threshold": casc.thr_a, "stage_b_threshold": round(casc.thr_b, 4),
                     "stage_b_input_for_decision": "patch" if a.stage_b_input != "whole" else "whole",
                     "detector": not a.no_detector, "medsam": casc.medsam.weights, "labels_file": os.path.basename(a.labels),
                     "n_images": len(images)}

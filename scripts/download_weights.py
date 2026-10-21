@@ -17,6 +17,8 @@ from huggingface_hub import hf_hub_download, snapshot_download
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEIGHTS = os.environ.get("CASCADE_WEIGHTS_DIR", os.path.join(ROOT, "weights"))
 RELEASE = "https://github.com/MariamHassan20/mammo-pipeline/releases/download/v1.0"
+MAMMOFM = "Mammo-FM_BatmanlabTrained_CLIP.tar"
+MAMMOFM_SHA = "58ae959de52d563acc1d43f50571498eddcd4fb7ca599e706540fdd319e3599b"
 OURS = {
     "mammo_fm_head.pt": "8242ab1e5554946989435de747ac5577b90fa11bd01bdf34064893babd069377",
     "stage_b_finetuned.pt": "ec29d8db7aa974617968b77c3022a62f72661efc12c1168e6e1279d0aabbaa77",
@@ -34,12 +36,16 @@ def _sha256(path):
 
 def main():
     os.makedirs(WEIGHTS, exist_ok=True)
-    dst = os.path.join(WEIGHTS, "Mammo-FM_BatmanlabTrained_CLIP.tar")
-    if os.path.exists(dst):
+    dst = os.path.join(WEIGHTS, MAMMOFM)
+    if os.path.exists(dst) and _sha256(dst) == MAMMOFM_SHA:
         print(f"Mammo-FM already present: {dst}")
     else:
-        p = hf_hub_download("batmanLab/Mammo-FM", "Mammo-FM_BatmanlabTrained_CLIP.tar")
-        shutil.copy(p, dst)
+        p = hf_hub_download("batmanLab/Mammo-FM", MAMMOFM)
+        shutil.copy(p, dst + ".part")                       # an interrupted copy never looks complete
+        if _sha256(dst + ".part") != MAMMOFM_SHA:
+            os.remove(dst + ".part")
+            raise SystemExit("Mammo-FM: checksum mismatch; the file on Hugging Face may have changed")
+        os.replace(dst + ".part", dst)
         print(f"Mammo-FM -> {dst}")
     snapshot_download("wanglab/medsam-vit-base")
     print("MedSAM (wanglab/medsam-vit-base) cached in the Hugging Face cache")
