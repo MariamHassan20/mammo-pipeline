@@ -264,7 +264,8 @@ The [`results/`](results/) folder shows sample outputs from a test run: four exa
 | **Example 3** | **Example 4** |
 | ![example 3](results/examples/example_3.png) | ![example 4](results/examples/example_4.png) |
 
-Green = true tumour outline, red = our segmentation. Each figure shows the tumour region, our tumour patch and
+Green = true tumour outline, red = our segmentation, yellow box = zoomed region. Each figure shows the full breast,
+the tumour region, our tumour patch and
 the true tumour patch.
 
 ---

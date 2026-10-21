@@ -261,7 +261,7 @@ def _header(lines, width):
 
 
 def save_example(gray, pred_mask, gt, crop_box, row, path, show_numbers=True):
-    """Panel: region with true (green) and predicted (red) outline | our tumour patch | true tumour patch.
+    """Panel: full breast | region with true (green) and predicted (red) outline | our tumour patch | true tumour patch.
     show_numbers=False prints only the colour legend (no labels, scores or Dice)."""
     ys, xs = np.where(gt > 0)
     gx0, gy0, gx1, gy1 = xs.min(), ys.min(), xs.max(), ys.max()
@@ -273,22 +273,27 @@ def save_example(gray, pred_mask, gt, crop_box, row, path, show_numbers=True):
     vx1, vy1 = max(b[2] for b in boxes), max(b[3] for b in boxes)
     m = int(0.15 * max(vx1 - vx0, vy1 - vy0))
     vx0, vy0, vx1, vy1 = max(0, vx0 - m), max(0, vy0 - m), min(W, vx1 + m), min(H, vy1 + m)
-    reg = cv2.cvtColor(gray[vy0:vy1, vx0:vx1], cv2.COLOR_GRAY2BGR)
+    full = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    reg = full[vy0:vy1, vx0:vx1].copy()
     th = max(2, int(0.006 * max(reg.shape[:2])))
+    th_full = max(3, int(0.004 * max(H, W)))
     for mk, col in ((gt, (0, 200, 0)), (pred_mask, (0, 0, 255))):
         if mk is not None and mk.any():
+            c, _ = cv2.findContours(mk.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            cv2.drawContours(full, c, -1, col, th_full)
             c, _ = cv2.findContours(mk[vy0:vy1, vx0:vx1].astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             cv2.drawContours(reg, c, -1, col, th)
-    tiles = [_label(_tile(reg), "tumour region")]
+    cv2.rectangle(full, (vx0, vy0), (vx1, vy1), (0, 200, 255), th_full)       # yellow = zoomed region
+    tiles = [_label(_tile(full, 600), "full breast"), _label(_tile(reg, 600), "tumour region")]
     if crop_box:
         x0, y0, x1, y1 = crop_box
-        tiles.append(_label(_tile(cv2.cvtColor(gray[y0:y1, x0:x1], cv2.COLOR_GRAY2BGR)), "our tumour patch"))
-    tiles.append(_label(_tile(cv2.cvtColor(gray[tb[1]:tb[3], tb[0]:tb[2]], cv2.COLOR_GRAY2BGR)), "true tumour patch"))
+        tiles.append(_label(_tile(cv2.cvtColor(gray[y0:y1, x0:x1], cv2.COLOR_GRAY2BGR), 600), "our tumour patch"))
+    tiles.append(_label(_tile(cv2.cvtColor(gray[tb[1]:tb[3], tb[0]:tb[2]], cv2.COLOR_GRAY2BGR), 600), "true tumour patch"))
     sep = np.full((tiles[0].shape[0], 10, 3), 255, np.uint8)
     body = tiles[0]
     for t in tiles[1:]:
         body = np.hstack([body, sep, t])
-    legend = "outline colours: GREEN = true tumour (ground truth), RED = our segmentation"
+    legend = "GREEN = true tumour (ground truth), RED = our segmentation, YELLOW box = zoomed region"
     lines = ([f"true: {row['true_label']}    predicted: {row['decision']}    "
               f"P(malignant, patch) = {row.get('p_malignant_patch')}",
               f"segmentation Dice = {row.get('dice')}    box from: {row.get('box_source')}", legend]
