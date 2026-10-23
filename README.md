@@ -311,6 +311,18 @@ save_outputs(result, art, "outputs/view")        # writes overlay, patch and mas
 ```
 
 <details>
+<summary><b>Share a dataset as features instead of images</b></summary>
+
+`scripts/extract_features.py` computes the frozen Mammo-FM feature vector (2048 numbers) of every image, so a
+dataset can be analysed elsewhere without moving the images. Features cannot be turned back into images, and
+the file is small (about 4 KB per image). It runs on a 10 GB GPU or on CPU.
+```bash
+python scripts/extract_features.py --input path/to/images/ --out features.npz --anonymize
+python scripts/extract_features.py --csv labels.csv --out features.npz      # columns: image[,label][,source]
+```
+</details>
+
+<details>
 <summary><b>Large evaluations (resumable CSV output)</b></summary>
 
 `scripts/evaluate_bm.py` runs the full chain on a labelled CSV (`image`, `label` = benign/malignant, optional
